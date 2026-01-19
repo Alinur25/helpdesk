@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HelpDesk UI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .ticket-card { cursor: pointer; transition: 0.2s; }
+        .ticket-card:hover { background-color: #e9ecef; }
+        .ticket-selected { border-left: 5px solid #0d6efd; background-color: #fff; }
+        .status-OPEN { color: green; font-weight: bold; }
+        .status-IN_PROGRESS { color: orange; font-weight: bold; }
+        .status-RESOLVED { color: blue; font-weight: bold; }
+        .status-CLOSED { color: gray; font-weight: bold; }
+        .comment-box { background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 10px; }
+        .scrollable-list { max-height: 80vh; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>Список заявок</h4>
+                <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createTicketModal">+ Новая</button>
+            </div>
+
+            <select class="form-select mb-3" id="statusFilter" onchange="loadTickets()">
+                <option value="">Все статусы</option>
+                <option value="OPEN">OPEN</option>
+                <option value="IN_PROGRESS">IN_PROGRESS</option>
+                <option value="RESOLVED">RESOLVED</option>
+                <option value="CLOSED">CLOSED</option>
+            </select>
+
+            <div id="ticketList" class="list-group scrollable-list">
+                <div class="text-center mt-5">Загрузка...</div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div id="ticketDetails" class="p-4 bg-white shadow-sm rounded" style="display: none;">
+                <div class="d-flex justify-content-between">
+                    <h2 id="detailTitle">Заголовок тикета</h2>
+                    <span id="detailId" class="text-muted">#ID</span>
+                </div>
+                <div class="mb-3">
+                    Статус: <span id="detailStatus">OPEN</span>
+                </div>
+
+                <p id="detailDescription" class="lead fs-6">Описание проблемы...</p>
+                <p class="text-muted small">Создано: <span id="detailCreated"></span></p>
+
+                <hr>
+
+                <div class="mb-4">
+                    <h6>Сменить статус:</h6>
+                    <button class="btn btn-outline-success btn-sm" onclick="updateStatus('OPEN')">Open</button>
+                    <button class="btn btn-outline-warning btn-sm" onclick="updateStatus('IN_PROGRESS')">In Progress</button>
+                    <button class="btn btn-outline-primary btn-sm" onclick="updateStatus('RESOLVED')">Resolved</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="updateStatus('CLOSED')">Closed</button>
+                </div>
+
+                <h5>Комментарии</h5>
+                <div id="commentsList" class="mb-3 p-2 bg-light rounded" style="max-height: 300px; overflow-y: auto;">
+                </div>
+
+                <div class="input-group">
+                    <input type="text" id="newCommentText" class="form-control" placeholder="Написать комментарий...">
+                    <button class="btn btn-primary" onclick="addComment()">Отправить</button>
+                </div>
+            </div>
+
+            <div id="emptyState" class="text-center mt-5 text-muted">
+                <h4>Выберите тикет слева, чтобы увидеть детали</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="createTicketModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать заявку</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label>Заголовок</label>
+                    <input type="text" id="createTitle" class="form-control">
+                </div>
+                <div class="mb-3">
+                    <label>Описание</label>
+                    <textarea id="createDesc" class="form-control" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="createTicket()">Создать</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const API_URL = '/api/tickets';
+    let currentTicketId = null;
+
+    // 1. Загрузка списка тикетов
+    async function loadTickets() {
+        const status = document.getElementById('statusFilter').value;
+        const url = status ? `${API_URL}?status=${status}` : API_URL;
+
+        try {
+            const res = await fetch(url);
+            const tickets = await res.json();
+
+            const listEl = document.getElementById('ticketList');
+            listEl.innerHTML = '';
+
+            tickets.forEach(t => {
+                const item = document.createElement('a');
+                item.className = `list-group-item list-group-item-action ticket-card`;
+                item.onclick = () => openTicket(t.id);
+                item.innerHTML = `
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1 text-truncate" style="max-width: 70%;">${t.title}</h6>
+                        <small class="status-${t.status}">${t.status}</small>
+                    </div>
+                    <small class="text-muted">ID: ${t.id}</small>
+                `;
+                listEl.appendChild(item);
+            });
+        } catch (e) {
+            console.error(e);
+            alert("Ошибка загрузки тикетов. Проверь консоль браузера.");
+        }
+    }
+
+    // 2. Открытие конкретного тикета
+    async function openTicket(id) {
+        currentTicketId = id;
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('ticketDetails').style.display = 'block';
+
+        try {
+            const res = await fetch(`${API_URL}/${id}`);
+            const t = await res.json();
+
+            document.getElementById('detailTitle').innerText = t.title;
+            document.getElementById('detailId').innerText = '#' + t.id;
+            document.getElementById('detailDescription').innerText = t.description || 'Нет описания';
+            document.getElementById('detailStatus').innerText = t.status;
+            document.getElementById('detailStatus').className = `status-${t.status}`;
+            document.getElementById('detailCreated').innerText = new Date(t.createdAt).toLocaleString();
+
+            renderComments(t.comments);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    // Отображение комментариев
+    function renderComments(comments) {
+        const container = document.getElementById('commentsList');
+        container.innerHTML = '';
+        if(!comments || comments.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">Нет комментариев</p>';
+            return;
+        }
+        comments.forEach(c => {
+            const div = document.createElement('div');
+            div.className = 'comment-box';
+            div.innerHTML = `
+                <div class="small text-muted mb-1">${new Date(c.createdAt).toLocaleString()}</div>
+                <div>${c.text}</div>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    // 3. Создание тикета
+    async function createTicket() {
+        const title = document.getElementById('createTitle').value;
+        const desc = document.getElementById('createDesc').value;
+
+        if (!title) return alert("Введите заголовок!");
+
+        await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: title, description: desc })
+        });
+
+        // Закрыть модалку (bootstrap API)
+        const modal = bootstrap.Modal.getInstance(document.getElementById('createTicketModal'));
+        modal.hide();
+
+        // Очистить поля
+        document.getElementById('createTitle').value = '';
+        document.getElementById('createDesc').value = '';
+
+        loadTickets(); // Обновить список
+    }
+
+    // 4. Смена статуса
+    async function updateStatus(newStatus) {
+        if (!currentTicketId) return;
+
+        await fetch(`${API_URL}/${currentTicketId}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+        openTicket(currentTicketId); // Обновить данные
+        loadTickets(); // Обновить статус в списке
+    }
+
+    // 5. Добавление комментария
+    async function addComment() {
+        if (!currentTicketId) return;
+        const text = document.getElementById('newCommentText').value;
+        if (!text) return;
+
+        await fetch(`${API_URL}/${currentTicketId}/comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text })
+        });
+
+        document.getElementById('newCommentText').value = '';
+        openTicket(currentTicketId); // Перезагрузить тикет чтобы увидеть коммент
+    }
+
+    // Загрузка при старте
+    loadTickets();
+</script>
+
+</body>
+</html>
